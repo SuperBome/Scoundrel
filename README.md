@@ -5,12 +5,6 @@ Grafica essenziale, atmosfera dark e struttura modulare: **Scoundrel** è pensat
 
 ---
 
-## 📸 Screenshot
-
-![Menu Principale](assets/images/ui/menu_bg_blur.png)
-
----
-
 ## 🚀 Come eseguire il gioco
 
 ### 1. Requisiti
@@ -18,7 +12,7 @@ Grafica essenziale, atmosfera dark e struttura modulare: **Scoundrel** è pensat
 Assicurati di avere installato **Python 3.9+** e la libreria `pygame`.
 
 ```
-> pip install pygame
+pip install pygame
 ```
 
 ### 2. Avvio
@@ -26,9 +20,9 @@ Assicurati di avere installato **Python 3.9+** e la libreria `pygame`.
 Clona il repository e avvia il gioco con:
 
 ```
-> git clone https://github.com/tuonomeutente/scoundrel-rising.git
-> cd scoundrel-rising
-> python main.py
+git clone https://github.com/tuonomeutente/scoundrel-rising.git
+cd scoundrel-rising
+python main.py
 ```
 
 ### 🎯 Funzionalità attuali
