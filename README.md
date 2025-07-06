@@ -35,6 +35,7 @@ python main.py
 
 ### 🛠️ Struttura del progetto
 
+```text
 scoundrel/
 │
 ├── assets/
@@ -45,6 +46,7 @@ scoundrel/
 ├── main.py
 ├── README.md
 └── ...
+```
 
 ### 🧪 In sviluppo
  
