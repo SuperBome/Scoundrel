@@ -1,5 +1,6 @@
 import pygame
 import os
+from deck import CardDeck
 
 # =========================
 # COSTANTI E INIZIALIZZAZIONE
@@ -9,6 +10,8 @@ WIDTH, HEIGHT = 1280, 896  # Dimensioni finestra
 FPS = 60                   # Frame per secondo
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("SCOUNDREL")
+
+deck = CardDeck(os.path.join("assets", "images", "cards", "cards_tileMap.png"))  # Caricamento mazzo di carte
 
 # =========================
 # CARICAMENTO ASSETS
@@ -161,7 +164,18 @@ def draw_game_window():
         WIN.blit(BACK_HOVER, back_rect.topleft)
     else:
         WIN.blit(BACK, back_rect.topleft)
-        
+    
+    # Esempio di disegno di carte
+    cards = [
+    deck.get("A_of_spades", (50, 100)),
+    deck.get("Q_of_hearts", (100, 100)),
+    deck.get("10_of_diamonds", (150, 100))
+    ]
+
+    group = pygame.sprite.Group(cards)
+    group.draw(WIN)
+    # Fine esempio di disegno di carte
+    
     pygame.display.update()
     return back_rect, mouse_pos
 
