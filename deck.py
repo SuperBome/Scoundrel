@@ -10,8 +10,13 @@ class Card(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=pos)
         self.name = name
         self.value = value
-        self.suit = name.split("_of_")[1]
-        self.rank = name.split("_of_")[0]
+        # Gestione speciale per il dorso ("back")
+        if "_of_" in name:
+            self.suit = name.split("_of_")[1]
+            self.rank = name.split("_of_")[0]
+        else:
+            self.suit = None
+            self.rank = None
 
     def update(self, *args):
         pass
@@ -43,16 +48,23 @@ class CardDeck:
 
         for row, suit in enumerate(suits):
             for col, rank in enumerate(ranks):
+                # Escludi figure rosse e assi rossi
+                if suit in ['hearts', 'diamonds'] and (rank in ['J', 'Q', 'K', 'A']):
+                    continue  # Salta questa carta
                 name = f"{rank}_of_{suit}"
                 value = values[rank]
                 self.cards[name] = self._make_card(col, row, name, value)
-    
+        # AGGIUNGI IL DORSO
+        self.cards["back"] = self._make_card(13, 1, "back", 0)
+
     def _make_card(self, col, row, name, value):
         x = col * CARD_WIDTH
         y = row * CARD_HEIGHT
         rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
         image = self.sheet.subsurface(rect).copy()
         image = round_card_corners(image)
+        
+        image = pygame.transform.scale(image, (CARD_WIDTH * 3, CARD_HEIGHT * 3))
         
         return Card(image, name, value)
 
