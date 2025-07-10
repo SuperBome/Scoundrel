@@ -11,23 +11,22 @@ WIDTH, HEIGHT = 1280, 896  # Dimensioni finestra
 FPS = 60                   # Frame per secondo
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 
-DECK_POS = (150, 150) # Posizione del mazzo degli scarti
+DECK_POS = (150, 150) # Posizione del mazzo
 GAME_POS = [(350, 180), (495, 180), (640, 180), (785, 180)]  # Posizioni delle carte in gioco
 DISCARD_POS = (985, 150)  # Posizione del mazzo degli scarti
 
 pygame.display.set_caption("SCOUNDREL")
 
-CARDS_LEFT = 44 # Numero di carte iniziali nel mazzo (escludendo il dorso e figure ed assi rossi)
 LIFT_AMOUNT = 15 # Quanti pixel sollevare la carta selezionata
 DARK_RED = (139, 0, 0) # Colore per l'highlight di selezione
 
-pygame.font.init()  # Inizializzazione del modulo font di Pygame
-FONT_PATH = os.path.join("assets", "fonts", "Jersey15-Regular.ttf")  # Cambia con il nome del tuo file
-FONT = pygame.font.Font(FONT_PATH, 36)  # 36 è la dimensione del font
+pygame.font.init()
+FONT_PATH = os.path.join("assets", "fonts", "Jersey15-Regular.ttf")
+FONT = pygame.font.Font(FONT_PATH, 36)
 
-deck = CardDeck(os.path.join("assets", "images", "cards", "cards_tileMap.png"))  # Caricamento mazzo di carte
+deck = CardDeck(os.path.join("assets", "images", "cards", "cards_tileMap.png"))
 
-global carte_pescate, nomi_pescati, scarti
+global carte_pescate, nomi_pescati, scarti, player_interacted_this_turn, fuga_usata_nel_turno_precedente
                         
 
 # =========================
@@ -59,11 +58,19 @@ EXIT = pygame.transform.scale(EXIT_BTN, (105, 100))
 EXIT_BTN_HOVER = pygame.image.load(os.path.join("assets", "images", "ui", "exit_btn_hover.png"))
 EXIT_HOVER = pygame.transform.scale(EXIT_BTN_HOVER, (105, 100))
 
-# Pulsante indietro (per gioco e opzioni)
+# Pulsante indietro
 BACK_BTN = pygame.image.load(os.path.join("assets", "images", "ui", "back_btn.png"))
 BACK = pygame.transform.scale(BACK_BTN, (160, 100))
 BACK_BTN_HOVER = pygame.image.load(os.path.join("assets", "images", "ui", "back_btn_hover.png"))
 BACK_HOVER = pygame.transform.scale(BACK_BTN_HOVER, (160, 100))
+
+# Pulsante fuggi
+ESCAPE_BTN = pygame.image.load(os.path.join("assets", "images", "ui", "escape_btn.png"))
+ESCAPE = pygame.transform.scale(ESCAPE_BTN, (160, 100)) 
+ESCAPE_BTN_HOVER = pygame.image.load(os.path.join("assets", "images", "ui", "escape_btn_hover.png"))
+ESCAPE_HOVER = pygame.transform.scale(ESCAPE_BTN_HOVER, (160, 100))
+ESCAPE_DISABLED = ESCAPE.copy()
+ESCAPE_DISABLED.set_alpha(100)
 
 # Tavolo
 TABLE_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "table.png"))
@@ -71,10 +78,34 @@ TABLE_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "table.png"
 # Pergamena
 SCROLL_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "scroll_test_2.png"))
 
+### AGGIUNTO: Caricamento e preparazione dei pulsanti azione ###
+# Ho usato i nomi file che avevi nel codice originale e ho creato le versioni disabilitate.
+# Le dimensioni sono indicative, puoi cambiarle per adattarle meglio.
+BTN_WIDTH, BTN_HEIGHT = 230, 90  # Dimensioni standard per i pulsanti azione
+
+# Pulsante COMBATTI
+FIGHT_BTN_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "fight_btn.png"))
+FIGHT_BTN = pygame.transform.scale(FIGHT_BTN_IMG, (300, 270))
+FIGHT_BTN_DISABLED = FIGHT_BTN.copy()
+FIGHT_BTN_DISABLED.set_alpha(100)
+
+# Pulsante CURA
+HEAL_BTN_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "heal_btn.png"))
+HEAL_BTN = pygame.transform.scale(HEAL_BTN_IMG, (300, 270))
+HEAL_BTN_DISABLED = HEAL_BTN.copy()
+HEAL_BTN_DISABLED.set_alpha(100)
+
+# Pulsante RACCOGLI
+PICKUP_BTN_IMG = pygame.image.load(os.path.join("assets", "images", "ui", "pickup_btn.png"))
+PICKUP_BTN = pygame.transform.scale(PICKUP_BTN_IMG, (300, 270))
+PICKUP_BTN_DISABLED = PICKUP_BTN.copy()
+PICKUP_BTN_DISABLED.set_alpha(100)
+
+
 # =========================
 # CLASSI DI TRANSIZIONE (FADE)
 # =========================
-
+# ... (il codice delle classi FadeInTransition e FadeOutTransition rimane invariato) ...
 class FadeOutTransition(pygame.sprite.Sprite):
     """
     Dissolvenza verso nero (fade-out): copre la schermata con una superficie nera crescente.
@@ -130,7 +161,6 @@ class FadeInTransition(pygame.sprite.Sprite):
 
     def is_transitioning(self):
         return self.transitioning
-
 # =========================
 # FUNZIONI DI DISEGNO SCHERMATE
 # =========================
@@ -180,57 +210,134 @@ def pesca_4_carte(deck):
     mazzo = mazzo[4:]
     return carte_pescate, nomi_pescati
 
+def pesca_tre_nuove_carte():
+    """
+    Pesca 3 carte dal mazzo e le aggiunge a quella rimasta in gioco,
+    posizionandole negli slot liberi.
+    """
+    global mazzo, carte_pescate, nomi_pescati, deck, player_interacted_this_turn, fuga_usata_nel_turno_precedente
+
+    # Controlla se ci sono abbastanza carte da pescare
+    if len(mazzo) < 3:
+        print("Non ci sono abbastanza carte nel mazzo per riempire la stanza!")
+        # Qui potresti inserire una logica di fine gioco o di rimescolamento degli scarti
+        return
+
+    # Trova le posizioni libere sul tavolo
+    posizioni_occupate = {card.rect.topleft for card in carte_pescate}
+    posizioni_disponibili = [pos for pos in GAME_POS if pos not in posizioni_occupate]
+    
+    # Pesca le prime 3 carte dal mazzo
+    carte_da_aggiungere_nomi = mazzo[:3]
+    mazzo = mazzo[3:] # Rimuovi le carte pescate dal mazzo
+
+    # Crea gli oggetti carta e aggiungili alla mano
+    for i, nome_carta in enumerate(carte_da_aggiungere_nomi):
+        if i < len(posizioni_disponibili):
+            nuova_posizione = posizioni_disponibili[i]
+            nuova_carta = deck.get(nome_carta, nuova_posizione)
+            carte_pescate.append(nuova_carta)
+            nomi_pescati.append(nome_carta)
+    
+    print("Pesca di 3 nuove carte completata.")
+    # All'inizio di una nuova "mano", il giocatore non ha ancora interagito
+    # e può di nuovo fuggire (se non lo ha fatto nel turno precedente).
+    player_interacted_this_turn = False
+    fuga_usata_nel_turno_precedente = False
+
 def draw_game_window(selected_card):
     """
-    Disegna la schermata di gioco con il tasto indietro (hover).
-    Mostra la pila dinamica del mazzo e degli scarti, e le 4 carte pescate.
-    Restituisce il rect del tasto indietro e la posizione del mouse.
+    Disegna la schermata di gioco, gestendo dinamicamente l'aspetto dei pulsanti azione
+    in base alla carta selezionata.
     """
     WIN.blit(GAME_BG, (0, 0))
     WIN.blit(TABLE_IMG, (0, HEIGHT / 5))
     WIN.blit(SCROLL_IMG, (0, 0))
     
-    draw_mazzo_pila()  # Disegna la pila del mazzo
-    draw_scarti_pila()  # Disegna la pila degli scarti
-
-    # --- Mostra il numero di carte rimaste nel mazzo ---
+    mouse_pos = pygame.mouse.get_pos()
+    
+    # --- Disegna Pile e Testi ---
+    draw_mazzo_pila()
+    draw_scarti_pila()
     num_carte_rimaste = len(mazzo)
     text = FONT.render(f"Carte rimaste: {num_carte_rimaste}", True, (255, 255, 255))
     text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT - 50))
     WIN.blit(text, text_rect)
 
-    # --- Mostra le 4 carte pescate in GAME_POS ---
-    mouse_pos = pygame.mouse.get_pos()
+    # --- Disegna le 4 Carte in Gioco (con logica di selezione/hover) ---
     for card in carte_pescate:
         draw_pos = card.rect.topleft
         is_selected = (card == selected_card)
 
-        # Se la carta è selezionata, calcola la posizione sollevata e disegna il bordo lì
         if is_selected:
-            # Calcola la posizione sollevata PRIMA di disegnare qualsiasi cosa
             lifted_pos = (card.rect.x, card.rect.y - LIFT_AMOUNT)
-            # Crea un rettangolo per il bordo basato sulla NUOVA posizione
             border_rect = pygame.Rect(lifted_pos, (card.rect.width, card.rect.height)).inflate(8, 8)
-            # Disegna il bordo rosso usando il rettangolo corretto
             pygame.draw.rect(WIN, DARK_RED, border_rect, border_radius=8, width=4)
-            draw_pos = lifted_pos # Aggiorna la posizione di disegno per l'immagine
-        # Altrimenti, se il mouse è sopra, disegna il bordo bianco di hover
+            draw_pos = lifted_pos
         elif card.rect.collidepoint(mouse_pos):
             pygame.draw.rect(WIN, (255, 255, 255), card.rect.inflate(8, 8), border_radius=8, width=4)
         
-        # Disegna la carta nella posizione calcolata (normale o sollevata)
         WIN.blit(card.image, draw_pos)
 
+    # --- Logica di abilitazione e disegno dei pulsanti azione ---
+    
+    # 1. Definisci lo stato di default (disabilitato)
+    fight_enabled = False
+    heal_enabled = False
+    pickup_enabled = False
 
-    # --- Tasto indietro ---
+    # 2. Se una carta è selezionata, controlla il suo seme e abilita il pulsante corrispondente
+    if selected_card:
+        card_name = selected_card.name
+        if "spades" in card_name or "clubs" in card_name:
+            fight_enabled = True
+        elif "hearts" in card_name:
+            heal_enabled = True
+        elif "diamonds" in card_name:
+            pickup_enabled = True
+
+    # 3. Definisci le posizioni e i rect dei pulsanti
+    fight_rect = FIGHT_BTN.get_rect(center=(WIDTH // 2 - 180, 630))
+    heal_rect = HEAL_BTN.get_rect(center=(WIDTH // 2 + 180, 630))
+    pickup_rect = PICKUP_BTN.get_rect(center=(WIDTH // 2, 750))
+
+    # 4. Disegna il pulsante corretto (abilitato o disabilitato) in base allo stato
+    if fight_enabled:
+        WIN.blit(FIGHT_BTN, fight_rect)
+    else:
+        WIN.blit(FIGHT_BTN_DISABLED, fight_rect)
+    
+    if heal_enabled:
+        WIN.blit(HEAL_BTN, heal_rect)
+    else:
+        WIN.blit(HEAL_BTN_DISABLED, heal_rect)
+
+    if pickup_enabled:
+        WIN.blit(PICKUP_BTN, pickup_rect)
+    else:
+        WIN.blit(PICKUP_BTN_DISABLED, pickup_rect)
+    
+    # --- Disegna pulsanti Indietro e Fuggi ---
     back_rect = BACK.get_rect(bottomleft=(30, HEIGHT - 30))
     if back_rect.collidepoint(mouse_pos):
         WIN.blit(BACK_HOVER, back_rect.topleft)
     else:
         WIN.blit(BACK, back_rect.topleft)
+        
+    escape_rect = ESCAPE.get_rect(bottomright=(WIDTH - 30, HEIGHT - 30))
+    fuga_possibile = (len(mazzo) >= 4 and not player_interacted_this_turn and not fuga_usata_nel_turno_precedente)
+    if fuga_possibile:
+        if escape_rect.collidepoint(mouse_pos):
+            WIN.blit(ESCAPE_HOVER, escape_rect.topleft)
+        else:
+            WIN.blit(ESCAPE, escape_rect.topleft)
+    else:
+        WIN.blit(ESCAPE_DISABLED, escape_rect.topleft)
 
     pygame.display.update()
-    return back_rect, mouse_pos
+    
+    # Restituisce tutti i rect cliccabili
+    return back_rect, escape_rect, fight_rect, heal_rect, pickup_rect, mouse_pos
 
 def draw_options_window():
     """
@@ -277,26 +384,75 @@ def draw_scarti_pila():
         if card:
             WIN.blit(card.image, card.rect.topleft)
 
+def funzione_fuggi():
+    """
+    Mette le 4 carte in gioco in fondo al mazzo, le mischia,
+    e poi pesca 4 nuove carte. Aggiorna le variabili di stato della fuga.
+    """
+    global mazzo, nomi_pescati, carte_pescate, deck, fuga_usata_nel_turno_precedente, player_interacted_this_turn
+    
+    print("Fuga! Le carte in gioco tornano nel mazzo.")
 
+    carte_da_spostare = list(nomi_pescati)
+    random.shuffle(carte_da_spostare)
+    mazzo.extend(carte_da_spostare)
+    
+    pesca_4_carte(deck)
+    
+    fuga_usata_nel_turno_precedente = True
+    player_interacted_this_turn = False
 
+# Funzione per gestire la logica di una carta selezionata    
+def gioca_carta(card_to_play):
+    """
+    Gestisce le conseguenze del giocare una carta. Se rimane una sola carta,
+    ne pesca altre 3 per riempire la stanza.
+    """
+    global scarti, nomi_pescati, carte_pescate, selected_card
+
+    print(f"AZIONE COMPLETATA con la carta: {card_to_play.name}")
+
+    # 1. Aggiungi la carta agli scarti
+    scarti.append(card_to_play.name)
+
+    # 2. Rimuovi la carta dalla mano del giocatore (sia l'oggetto che il nome)
+    carte_pescate.remove(card_to_play)
+    nomi_pescati.remove(card_to_play.name)
+
+    # 3. Deseleziona la carta
+    selected_card = None
+
+    # 4. ### NUOVA LOGICA DI PESCA ###
+    # Se dopo aver giocato la carta ne rimane solo una, è ora di pescare.
+    if len(carte_pescate) == 1:
+        print("Rimasta una sola carta. Si prepara a pescare.")
+        # Controlliamo che ci sia almeno una carta nel mazzo prima di procedere
+        if len(mazzo) > 0:
+            pesca_tre_nuove_carte()
+        else:
+            print("Mazzo vuoto! La stanza non può essere riempita.")
+            # A questo punto il gioco potrebbe continuare con l'ultima carta
+            # o terminare, a seconda delle tue regole.
+    
 # =========================
 # MAIN LOOP E LOGICA DI GIOCO
 # =========================
 
 def main():
-    # Stati delle schermate
+    global player_interacted_this_turn, fuga_usata_nel_turno_precedente
     menu = True
     game = False
     options = False
 
-    # AGGIUNTO: Variabile per tenere traccia della carta selezionata
     selected_card = None
+    player_interacted_this_turn = False
+    fuga_usata_nel_turno_precedente = False
 
     clock = pygame.time.Clock()
     run = True
-    mouse_released = True  # Per evitare click "ereditati"
-    fade_sprite = None     # Sprite per la transizione fade
-    fade_group = pygame.sprite.Group()  # Gruppo per gestire la transizione
+    mouse_released = True
+    fade_sprite = None
+    fade_group = pygame.sprite.Group()
 
     while run:
         dt = clock.tick(FPS)
@@ -306,30 +462,25 @@ def main():
             if event.type == pygame.MOUSEBUTTONUP:
                 mouse_released = True
 
-        # --- Disegna la schermata attuale ---
         if menu:
             new_game_rect, option_rect, exit_rect, mouse_pos = draw_starting_window()
         elif game:
-            # MODIFICATO: Passa la carta selezionata alla funzione di disegno
-            back_rect, mouse_pos = draw_game_window(selected_card)
+            back_rect, escape_rect, fight_rect, heal_rect, pickup_rect, mouse_pos = draw_game_window(selected_card)
         elif options:
             back_rect, mouse_pos = draw_options_window()
 
-        # --- Gestione click sui pulsanti ---
-        if fade_sprite is None:  # Solo se non c'è una transizione in corso
+        if fade_sprite is None:
             if menu:
                 if pygame.mouse.get_pressed()[0] and mouse_released:
                     if new_game_rect.collidepoint(mouse_pos):
-                        global scarti 
-                        scarti = [] # Resetta la pila degli scarti a ogni nuova partita
-                        selected_card = None # Resetta la selezione
-                        mazzo = [k for k in deck.cards.keys()
-                                if k != "back" and not (
-                                    ("hearts" in k or "diamonds" in k) and (k.startswith("J_") or k.startswith("Q_") or k.startswith("K_") or k.startswith("A_"))
-                                )]
+                        global scarti, mazzo, carte_pescate, nomi_pescati
+                        scarti = []
+                        selected_card = None
+                        player_interacted_this_turn = False
+                        fuga_usata_nel_turno_precedente = False
+                        mazzo = [k for k in deck.cards.keys() if k != "back" and not (("hearts" in k or "diamonds" in k) and (k.startswith("J_") or k.startswith("Q_") or k.startswith("K_") or k.startswith("A_")))]
                         random.shuffle(mazzo)
                         carte_pescate, nomi_pescati = pesca_4_carte(deck)
-                        # Avvia fade-out prima di cambiare schermata
                         fade_sprite = FadeOutTransition()
                         fade_group.add(fade_sprite)
                         next_state = "game"
@@ -342,38 +493,61 @@ def main():
                     elif exit_rect.collidepoint(mouse_pos):
                         run = False
                         mouse_released = False
-            
+
             elif game:
-                # NUOVA LOGICA DI SELEZIONE CARTA
                 if pygame.mouse.get_pressed()[0] and mouse_released:
-                    # Prima, gestisce il click sul tasto indietro
                     if back_rect.collidepoint(mouse_pos):
                         fade_sprite = FadeOutTransition()
                         fade_group.add(fade_sprite)
                         next_state = "menu"
                         mouse_released = False
-                    else:
+                    
+                    elif escape_rect.collidepoint(mouse_pos):
+                        fuga_possibile = (len(mazzo) >= 4 and not player_interacted_this_turn and not fuga_usata_nel_turno_precedente)
+                        if fuga_possibile:
+                            funzione_fuggi()
+                            selected_card = None
+                        else:
+                            print("Fuga non permessa in questo momento.")
+                        mouse_released = False
+                    
+                    ### MODIFICATO: Logica per i pulsanti azione ###
+                    elif selected_card and fight_rect.collidepoint(mouse_pos):
+                        if "spades" in selected_card.name or "clubs" in selected_card.name:
+                            # 1. Imposta che il giocatore ha interagito
+                            player_interacted_this_turn = True
+                            # 2. Chiama la funzione per gestire la carta
+                            gioca_carta(selected_card)
+                            mouse_released = False
+                    
+                    elif selected_card and heal_rect.collidepoint(mouse_pos):
+                        if "hearts" in selected_card.name:
+                            player_interacted_this_turn = True
+                            gioca_carta(selected_card)
+                            mouse_released = False
+                            
+                    elif selected_card and pickup_rect.collidepoint(mouse_pos):
+                        if "diamonds" in selected_card.name:
+                            player_interacted_this_turn = True
+                            gioca_carta(selected_card)
+                            mouse_released = False
+                            
+                    else: # Se non si clicca su un pulsante, si gestisce la selezione delle carte
                         clicked_on_a_card = False
-                        # Controlla se il click è su una delle carte in gioco
                         for card in carte_pescate:
                             if card.rect.collidepoint(mouse_pos):
-                                # Se la carta cliccata è già quella selezionata, la deseleziona
                                 if card == selected_card:
-                                    selected_card = None
-                                # Altrimenti, seleziona la nuova carta
+                                    selected_card = None # Deseleziona
                                 else:
-                                    selected_card = card
+                                    selected_card = card # Seleziona
+                                    
                                 clicked_on_a_card = True
-                                break # Esce dal ciclo, ha trovato la carta cliccata
-                        
-                        # Se il click non è avvenuto su una carta, deseleziona qualunque carta
+                                break
                         if not clicked_on_a_card:
-                            selected_card = None
-
+                            selected_card = None # Deseleziona se si clicca fuori
                         mouse_released = False
 
-
-            else: 
+            elif options: 
                 if pygame.mouse.get_pressed()[0] and mouse_released:
                     if back_rect.collidepoint(mouse_pos):
                         fade_sprite = FadeOutTransition()
@@ -381,26 +555,19 @@ def main():
                         next_state = "menu"
                         mouse_released = False
 
-        # --- Gestione transizione fade-out/fade-in ---
         if fade_sprite is not None:
             fade_group.update(dt)
             fade_group.draw(WIN)
             pygame.display.update()
-            # Se la transizione è finita
             if not fade_sprite.is_transitioning():
                 if isinstance(fade_sprite, FadeOutTransition):
-                    # Cambio schermata e avvio fade-in
-                    if next_state == "menu":
-                        menu, game, options = True, False, False
-                    elif next_state == "game":
-                        menu, game, options = False, True, False
-                    elif next_state == "options":
-                        menu, game, options = False, False, True
+                    if next_state == "menu": menu, game, options = True, False, False
+                    elif next_state == "game": menu, game, options = False, True, False
+                    elif next_state == "options": menu, game, options = False, False, True
                     fade_sprite = FadeInTransition()
                     fade_group.empty()
                     fade_group.add(fade_sprite)
                 elif isinstance(fade_sprite, FadeInTransition):
-                    # Quando il fade-in è finito, rimuovo la transizione
                     fade_group.empty()
                     fade_sprite = None
 
@@ -410,13 +577,8 @@ def main():
 # AVVIO DEL GIOCO
 # =========================
 
-scarti = [] 
-
 if __name__ == "__main__":
-    mazzo = [k for k in deck.cards.keys()
-             if k != "back" and not (
-                 ("hearts" in k or "diamonds" in k) and (k.startswith("J_") or k.startswith("Q_") or k.startswith("K_") or k.startswith("A_"))
-             )]
+    mazzo = [k for k in deck.cards.keys() if k != "back" and not (("hearts" in k or "diamonds" in k) and (k.startswith("J_") or k.startswith("Q_") or k.startswith("K_") or k.startswith("A_")))]
     random.shuffle(mazzo)
     scarti = []
     main()
